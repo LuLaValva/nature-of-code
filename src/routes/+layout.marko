@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="./favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="A basic Marko app.">
-    <title>The Nature of Code</title>
+    <title>Luca&#39;s p5 Playground</title>
   </head>
   <body>
     <${input.content}/>
@@ -16,10 +16,16 @@
   html {
     color: white;
     height: 100%;
-    background:
-      url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='4.81' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"),
-      radial-gradient(#7e5b3f, #3c2f23);
-    background-blend-mode: overlay;
+    background: radial-gradient(#7e5b3f, #3c2f23);
+  }
+
+  html::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='4.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+    pointer-events: none;
   }
 
   canvas {
