@@ -1,0 +1,45 @@
+import {
+  AXIAL_STEPS,
+  axialToCartesian,
+  cartesianToAxial,
+  round,
+  type AxialCoord,
+} from "../../../utils/hex";
+
+<let/jump=1>
+
+<p5-canvas sketch(p) {
+  let head: AxialCoord;
+
+  p.setup = () => {
+    const size = Math.max(Math.min(innerWidth, innerHeight) - 200, 300);
+    p.createCanvas(size, size);
+    p.colorMode(p.OKLCH, 1, 1, 360);
+    head = round(cartesianToAxial([size / 2, size / 2]));
+
+    p.strokeWeight(0);
+  };
+
+  p.draw = () => {
+    p.fill(0.7, 0.6, (jump * 60) % 360);
+    p.circle(...axialToCartesian(head), 3);
+    const [dq, dr] = p.random(AXIAL_STEPS);
+    head[0] += dq * jump;
+    head[1] += dr * jump;
+  };
+}/>
+
+<p>
+  Jump length is${" "}
+  <button onClick() {
+    jump++;
+  }>
+    ${jump}
+  </button>
+</p>
+
+<style>
+  p {
+    text-align: center;
+  }
+</style>

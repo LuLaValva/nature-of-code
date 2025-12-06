@@ -1,0 +1,60 @@
+import {
+  axialToCartesian,
+  round,
+  cartesianToAxial,
+  type AxialCoord,
+  AXIAL_STEPS,
+} from "../../../utils/hex";
+static const HEX_SIZE = 30;
+
+<p5-canvas sketch(p) {
+  let curr: AxialCoord;
+  let hue = 0;
+
+  const drawCircle = (coords: AxialCoord) => {
+    p.circle(...axialToCartesian(coords, HEX_SIZE), 20);
+  };
+  const nextColor = () => {
+    p.fill(0.8, 0.6, (hue = (hue + 10) % 360));
+  };
+
+  p.setup = () => {
+    const size = Math.min(innerWidth, innerHeight) - 50;
+    p.createCanvas(size, size);
+    p.colorMode(p.OKLCH, 1, 1, 360);
+
+    curr = round(cartesianToAxial([size / 2, size / 2], HEX_SIZE));
+    nextColor();
+    drawCircle(curr);
+  };
+
+  p.mouseMoved =
+    p.mouseDragged =
+    p.mousePressed =
+      () => {
+        const closestCenter = round(
+          cartesianToAxial([p.mouseX, p.mouseY], HEX_SIZE),
+        );
+        if (closestCenter[0] === curr[0] && closestCenter[1] === curr[1]) {
+          p.fill(1, 0, 0, 0.9);
+          drawCircle(curr);
+          // random walk
+          const [dq, dr] = p.random(AXIAL_STEPS);
+          curr[0] += dq;
+          curr[1] += dr;
+          nextColor();
+          drawCircle(curr);
+          // check if we've left the bounds of the canvas
+          const [x, y] = axialToCartesian(curr, HEX_SIZE);
+          if (x < 0 || y < 0 || x > p.width || y > p.height) {
+            p.fill(1, 0, 0, 0.5);
+            drawCircle(curr);
+            nextColor();
+            curr = round(
+              cartesianToAxial([p.width / 2, p.height / 2], HEX_SIZE),
+            );
+            drawCircle(curr);
+          }
+        }
+      };
+}/>

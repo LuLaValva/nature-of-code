@@ -2,9 +2,9 @@
   "name": "marko-p5",
   "description": "The default Marko starter app with TypeScript",
   "version": "1.0.0",
-  "type": "module",
   "dependencies": {
-    "marko": "^6.0.0"
+    "marko": "^6.0.0",
+    "p5": "^2.1.1"
   },
   "devDependencies": {
     "@marko/run": "^0.9.3"

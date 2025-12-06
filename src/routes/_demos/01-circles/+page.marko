@@ -1,0 +1,32 @@
+static const FADE = 6;
+
+<p5-canvas sketch(p) {
+  /** round robin */
+  let queue: [number, number][] = Array.from({ length: FADE }, () => [0, 0]);
+
+  p.setup = () => {
+    const size = Math.min(innerWidth, innerHeight) - 50;
+    p.createCanvas(size, size);
+    p.colorMode(p.OKLCH, 1, 1, 360);
+  };
+
+  p.draw = () => {
+    p.fill(
+      p.map(p.sin(p.frameCount / 791), -1, 1, 0.25, 0.75),
+      p.map(p.cos(p.frameCount / 287), -1, 1, 0.25, 0.75),
+      (p.frameCount / 10) % 360,
+    );
+
+    queue[p.frameCount % FADE] = [p.random(0, p.width), p.random(0, p.height)];
+
+    for (let i = 1; i <= FADE; i++) {
+      const progress = i / FADE;
+
+      // const ease = 1 - (progress ** 2);
+      const ease = Math.cos(progress * Math.PI * 0.5);
+      // const ease = 1 - (6 * progress ** 5 - 15 * progress ** 4 + 10 * progress ** 3);
+
+      p.circle(...queue[(p.frameCount + i) % FADE], ease * 50);
+    }
+  };
+}/>

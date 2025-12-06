@@ -1,0 +1,23 @@
+client import p5 from "p5";
+
+export interface Input {
+  sketch: (p: p5) => void;
+}
+
+<const/{ sketch }=input>
+
+<div/$container/>
+
+<let/p5Instance=undefined as p5 | undefined>
+
+<lifecycle
+  onMount() {
+    p5Instance = new p5((p: p5) => {
+      sketch(p);
+    }, $container());
+  }
+  onDestroy() {
+    p5Instance?.remove();
+  }>
+
+<return=() => (p5Instance!)>
