@@ -7,13 +7,13 @@
     "p5": "^2.1.1"
   },
   "devDependencies": {
+    "@marko/run-adapter-static": "^2.0.4",
     "@marko/run": "^0.9.3"
   },
   "private": true,
   "scripts": {
     "dev": "marko-run",
     "build": "marko-run build",
-    "preview": "marko-run preview",
-    "start": "node --enable-source-maps ./dist/index.mjs"
+    "preview": "marko-run preview"
   }
 }
