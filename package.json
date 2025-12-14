@@ -3,12 +3,12 @@
   "description": "The default Marko starter app with TypeScript",
   "version": "1.0.0",
   "dependencies": {
-    "marko": "^6.0.0",
+    "marko": "^6.0.121",
     "p5": "^2.1.1"
   },
   "devDependencies": {
-    "@marko/run-adapter-static": "^2.0.4",
-    "@marko/run": "^0.9.3"
+    "@marko/run": "^0.9.3",
+    "@marko/run-adapter-static": "^2.0.4"
   },
   "private": true,
   "scripts": {

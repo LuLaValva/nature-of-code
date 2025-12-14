@@ -14,6 +14,8 @@ declare module "@marko/run" {
 			"/01-circles": { verb: "get"; };
 			"/01-hover-walk": { verb: "get"; };
 			"/01-jump-walk": { verb: "get"; };
+			"/02-cube-bounce": { verb: "get"; };
+			"/02-gravity-billiards": { verb: "get"; };
 		}
 	}> {}
 }
@@ -62,11 +64,33 @@ declare module "../src/routes/_demos/01-jump-walk/+page.marko" {
   }
 }
 
+declare module "../src/routes/_demos/02-cube-bounce/+page.marko" {
+  namespace MarkoRun {
+    export { NotHandled, NotMatched, GetPaths, PostPaths, GetablePath, GetableHref, PostablePath, PostableHref, Platform };
+    export type Route = Run.Routes["/02-cube-bounce"];
+    export type Context = Run.MultiRouteContext<Route> & Marko.Global;
+    export type Handler = Run.HandlerLike<Route>;
+    /** @deprecated use `((context, next) => { ... }) satisfies MarkoRun.Handler` instead */
+    export const route: Run.HandlerTypeFn<Route>;
+  }
+}
+
+declare module "../src/routes/_demos/02-gravity-billiards/+page.marko" {
+  namespace MarkoRun {
+    export { NotHandled, NotMatched, GetPaths, PostPaths, GetablePath, GetableHref, PostablePath, PostableHref, Platform };
+    export type Route = Run.Routes["/02-gravity-billiards"];
+    export type Context = Run.MultiRouteContext<Route> & Marko.Global;
+    export type Handler = Run.HandlerLike<Route>;
+    /** @deprecated use `((context, next) => { ... }) satisfies MarkoRun.Handler` instead */
+    export const route: Run.HandlerTypeFn<Route>;
+  }
+}
+
 declare module "../src/routes/+layout.marko" {
   export interface Input extends Run.LayoutInput<typeof import("../src/routes/+layout.marko")> {}
   namespace MarkoRun {
     export { NotHandled, NotMatched, GetPaths, PostPaths, GetablePath, GetableHref, PostablePath, PostableHref, Platform };
-    export type Route = Run.Routes["/" | "/01-circles" | "/01-hover-walk" | "/01-jump-walk"];
+    export type Route = Run.Routes["/" | "/01-circles" | "/01-hover-walk" | "/01-jump-walk" | "/02-cube-bounce" | "/02-gravity-billiards"];
     export type Context = Run.MultiRouteContext<Route> & Marko.Global;
     export type Handler = Run.HandlerLike<Route>;
     /** @deprecated use `((context, next) => { ... }) satisfies MarkoRun.Handler` instead */
@@ -78,7 +102,7 @@ declare module "../src/routes/_demos/+layout.marko" {
   export interface Input extends Run.LayoutInput<typeof import("../src/routes/_demos/+layout.marko")> {}
   namespace MarkoRun {
     export { NotHandled, NotMatched, GetPaths, PostPaths, GetablePath, GetableHref, PostablePath, PostableHref, Platform };
-    export type Route = Run.Routes["/01-circles" | "/01-hover-walk" | "/01-jump-walk"];
+    export type Route = Run.Routes["/01-circles" | "/01-hover-walk" | "/01-jump-walk" | "/02-cube-bounce" | "/02-gravity-billiards"];
     export type Context = Run.MultiRouteContext<Route> & Marko.Global;
     export type Handler = Run.HandlerLike<Route>;
     /** @deprecated use `((context, next) => { ... }) satisfies MarkoRun.Handler` instead */

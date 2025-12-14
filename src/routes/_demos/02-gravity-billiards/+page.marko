@@ -1,0 +1,129 @@
+client import p5 from "p5";
+static type LCH = [l: number, c: number, h: number, a?: number];
+static interface Planet {
+  pos: p5.Vector;
+  vel: p5.Vector;
+  size: number;
+  color: LCH;
+}
+static function drawPlanet(p: p5, planet: Planet) {
+  p.fill(...planet.color);
+  p.circle(planet.pos.x, planet.pos.y, planet.size * 2);
+}
+static {
+  function step(
+    planet: Planet,
+    planets: Planet[],
+    width: number,
+    height: number,
+  ) {
+    const newPlanet: Planet = {
+      ...planet,
+      pos: p5.Vector.add(planet.pos, planet.vel),
+      vel: planet.vel.copy(),
+    };
+    // bounce off the walls
+    if (
+      (newPlanet.pos.x < planet.size && planet.vel.x < 0) ||
+      (newPlanet.pos.x > width - planet.size && planet.vel.x > 0)
+    ) {
+      newPlanet.vel.x *= -1;
+    }
+    if (
+      (newPlanet.pos.y < planet.size && planet.vel.y < 0) ||
+      (newPlanet.pos.y > height - planet.size && planet.vel.y > 0)
+    ) {
+      newPlanet.vel.y *= -1;
+    }
+    // apply gravity
+    let destroy = false;
+    for (const p of planets) {
+      if (p !== planet) {
+        const direction = p5.Vector.sub(p.pos, planet.pos);
+        const distance = direction.mag();
+        if (distance < p.size + planet.size) {
+          destroy = true;
+        }
+        const forceMagnitude = (30 * p.size) / (distance * distance);
+        direction.setMag(forceMagnitude);
+        newPlanet.vel.add(direction);
+      }
+    }
+    return destroy ? null : newPlanet;
+  }
+}
+
+<let/planets=([] as Planet[])>
+<p5-canvas sketch(p) {
+  let nextPlanet: Planet | null = null;
+
+  p.setup = () => {
+    const canvasSize = Math.min(innerWidth, innerHeight) - 80;
+    p.createCanvas(canvasSize, canvasSize);
+    p.colorMode(p.OKLCH, 1, 1, 360);
+    p.noStroke();
+  };
+
+  p.draw = () => {
+    p.background(0, 0, 0);
+    const newPlanets = [];
+    for (const planet of planets) {
+      drawPlanet(p, planet);
+      const stepped = step(planet, planets, p.width, p.height);
+      if (stepped) {
+        newPlanets.push(stepped);
+      }
+    }
+    planets = newPlanets;
+
+    if (nextPlanet) {
+      nextPlanet.vel = p5.Vector.sub(
+        nextPlanet.pos,
+        p.createVector(p.mouseX, p.mouseY),
+      ).mult(0.025);
+      nextPlanet.size += 1 / p.sqrt(nextPlanet.size + 1);
+
+      p.fill(1, 0, 0, 0.5);
+      for (
+        let i = 200, curr = step(nextPlanet, planets, p.width, p.height);
+        curr && i >= 10;
+        curr = step(curr, planets, p.width, p.height), i--
+      ) {
+        if (i % 10 === 0) {
+          p.circle(curr.pos.x, curr.pos.y, 3 + p.sqrt(i));
+        }
+      }
+
+      drawPlanet(p, nextPlanet);
+    }
+  };
+
+  p.mousePressed = () => {
+    nextPlanet = {
+      pos: p.createVector(p.mouseX, p.mouseY),
+      vel: p.createVector(0, 0),
+      size: 1,
+      color: [p.random(0.5, 1), p.random(0.25, 1), p.random(0, 360)],
+    };
+  };
+
+  p.mouseReleased = () => {
+    if (nextPlanet) {
+      planets = [...planets, nextPlanet];
+      nextPlanet = null;
+    }
+  };
+}/>
+
+<button onClick() {
+  planets = [];
+}>
+  Clear
+</button>
+
+<style>
+  button {
+    display: block;
+    margin: 1rem auto 0;
+  }
+</style>

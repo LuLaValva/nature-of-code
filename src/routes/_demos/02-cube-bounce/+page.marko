@@ -1,0 +1,139 @@
+client import p5 from "p5";
+static type LCH = [l: number, c: number, h: number, a?: number];
+static class Cube {
+  declare pos: p5.Vector;
+  declare vel: p5.Vector;
+  declare rot: p5.Vector;
+  declare rVel: p5.Vector;
+  declare color: LCH;
+  declare lifetime: number;
+  declare size: number;
+  constructor(
+    size: number,
+    pos: p5.Vector,
+    color: LCH,
+    rot: p5.Vector,
+    vel: p5.Vector,
+    rVel: p5.Vector,
+  ) {
+    this.size = size;
+    this.pos = pos;
+    this.vel = vel;
+    this.rot = rot;
+    this.rVel = rVel;
+    this.color = color;
+    this.lifetime = 0;
+  }
+
+  tick() {
+    this.lifetime++;
+    this.pos.add(this.vel);
+    this.rot.add(this.rVel);
+  }
+
+  draw(p: p5) {
+    p.push();
+    p.fill(...this.color);
+    p.translate(this.pos.x, this.pos.y, this.pos.z);
+    p.rotateX(this.rot.x);
+    p.rotateY(this.rot.y);
+    p.rotateZ(this.rot.z);
+    p.box(this.size);
+    p.pop();
+  }
+}
+
+<p5-canvas sketch(p) {
+  const cubes: Cube[] = [];
+  let boxSize: number;
+
+  const randomLCH = (): LCH => {
+    return [p.random(0.25, 1), p.random(0.25, 1), p.random(0, 360)];
+  };
+  const randomRot = (): p5.Vector => {
+    return p.createVector(p.random(0, 1.5), p.random(0, 1.5), p.random(0, 1.5));
+  };
+
+  p.setup = () => {
+    const canvasSize = Math.min(innerWidth, innerHeight) - 50;
+    boxSize = canvasSize / Math.sqrt(3);
+
+    p.createCanvas(canvasSize, canvasSize, p.WEBGL);
+    p.colorMode(p.OKLCH, 1, 1, 360);
+    p.angleMode(p.DEGREES);
+    cubes.push(
+      new Cube(
+        10,
+        p.createVector(0, 0, 0),
+        randomLCH(),
+        p.createVector(0, 0, 0),
+        p.createVector(5, 3, 4),
+        randomRot(),
+      ),
+    );
+  };
+
+  p.mouseClicked = () => {
+    cubes.push(
+      new Cube(
+        p.random(10, 50),
+        p.createVector(0, 0, 0),
+        randomLCH(),
+        p.createVector(0, 0, 0),
+        p.createVector(p.random(-5, 5), p.random(-5, 5), p.random(-5, 5)),
+        randomRot(),
+      ),
+    );
+  };
+
+  p.draw = () => {
+    p.clear();
+    p.noFill();
+    p.box(boxSize);
+    for (let i = cubes.length - 1; i >= 0; i--) {
+      const cube = cubes[i];
+
+      cube.tick();
+      cube.draw(p);
+
+      function split(axis: 0 | 1 | 2) {
+        cubes.splice(i, 1);
+        if (cube.size > 3) {
+          for (let i = 2; i--; ) {
+            cubes.push(
+              new Cube(
+                cube.size * 0.7,
+                cube.pos.copy(),
+                randomLCH(),
+                cube.rot.copy(),
+                cube.vel
+                  .copy()
+                  .add(
+                    axis === 0 ? 0 : p.random(-1, 1),
+                    axis === 1 ? 0 : p.random(-1, 1),
+                    axis === 2 ? 0 : p.random(-1, 1),
+                  ),
+                randomRot(),
+              ),
+            );
+          }
+        }
+      }
+
+      const { x, y, z } = cube.pos;
+      // Only reflect if the cube is out of bounds AND moving away from center
+      if (Math.abs(x) > boxSize / 2 && x * cube.vel.x > 0) {
+        cube.vel.reflect(p.createVector(1, 0, 0));
+        split(0);
+      }
+      if (Math.abs(y) > boxSize / 2 && y * cube.vel.y > 0) {
+        cube.vel.reflect(p.createVector(0, 1, 0));
+        split(1);
+      }
+      if (Math.abs(z) > boxSize / 2 && z * cube.vel.z > 0) {
+        cube.vel.reflect(p.createVector(0, 0, 1));
+        split(2);
+      }
+    }
+  };
+}/>
