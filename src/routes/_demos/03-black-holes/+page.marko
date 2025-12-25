@@ -1,0 +1,177 @@
+client import p5 from "p5";
+import vertShader from "./shader.vert?raw";
+import fragShader from "./shader.frag?raw";
+static interface Planet {
+  pos: p5.Vector;
+  vel: p5.Vector;
+  size: number;
+}
+static {
+  function step(
+    planet: Planet,
+    planets: Planet[],
+    width: number,
+    height: number,
+  ) {
+    const newPos = p5.Vector.add(planet.pos, planet.vel);
+    const newPlanet: Planet = {
+      ...planet,
+      pos: new p5.Vector(
+        ((newPos.x % width) + width) % width,
+        ((newPos.y % height) + height) % height,
+      ),
+      vel: planet.vel.copy(),
+    };
+
+    // apply gravity (including from across edges)
+    for (const p of planets) {
+      if (p !== planet) {
+        // include wrapping around edges (once)
+        for (let offsetX = -2; offsetX <= 2; offsetX++) {
+          for (let offsetY = -2; offsetY <= 2; offsetY++) {
+            const direction = p5.Vector.sub(p.pos, planet.pos).add(new p5.Vector(offsetX * width, offsetY * height));
+            const distance = direction.mag();
+            direction.setMag((2 * p.size * p.size) / (distance * distance));
+            newPlanet.vel.add(direction);
+          }
+        }
+      }
+    }
+    return newPlanet;
+  }
+}
+static function mergePlanets(planetsToMerge: Planet[]): Planet {
+  let totalMass = 0;
+  let centerOfMass = new p5.Vector(0, 0);
+  let totalMomentum = new p5.Vector(0, 0);
+
+  for (const p of planetsToMerge) {
+    const mass = p.size * p.size;
+    totalMass += mass;
+    centerOfMass.add(p5.Vector.mult(p.pos, mass));
+    totalMomentum.add(p5.Vector.mult(p.vel, mass));
+  }
+  centerOfMass.div(totalMass);
+
+  return {
+    pos: centerOfMass,
+    vel: totalMomentum.div(totalMass),
+    size: Math.sqrt(totalMass),
+  };
+}
+
+<let/planets=([] as Planet[])>
+<let/canvasSize=undefined as unknown as number/>
+
+<p5-canvas sketch(p) {
+  const metaballShader = p.createShader(vertShader, fragShader);
+  let pg: p5.Graphics;
+  let nextPlanet: Planet | null = null;
+
+  p.setup = () => {
+    canvasSize = Math.min(innerWidth, innerHeight) - 50;
+    p.createCanvas(canvasSize, canvasSize);
+
+    p.colorMode(p.OKLCH, 1, 1, 360);
+    p.noStroke();
+
+    pg = p.createGraphics(p.width, p.height, p.WEBGL);
+    pg.shader(metaballShader);
+
+    metaballShader.setUniform("width", p.width);
+    metaballShader.setUniform("height", p.height);
+
+    planets.push({
+      pos: p.createVector(p.width / 2, p.height / 2),
+      vel: p.createVector(0, 0),
+      size: 30,
+    });
+  };
+
+  p.draw = () => {
+    metaballShader.setUniform(
+      "xs",
+      planets.map((p) => p.pos.x),
+    );
+    metaballShader.setUniform(
+      "ys",
+      planets.map((p) => p.pos.y),
+    );
+    metaballShader.setUniform("rs", Array(30).fill(0));
+    metaballShader.setUniform(
+      "rs",
+      planets.map((p) => p.size * 10),
+    );
+    pg.quad(-1, -1, 1, -1, 1, 1, -1, 1);
+    p.image(pg, 0, 0);
+
+    const stepped = planets.map((planet) =>
+      step(planet, planets, p.width, p.height),
+    );
+
+    const merged = new Set<number>();
+    const newPlanets = [];
+    for (let i = 0; i < stepped.length; i++) {
+      if (merged.has(i)) continue;
+
+      const colliding = [stepped[i]];
+
+      for (let j = i + 1; j < stepped.length; j++) {
+        if (merged.has(j)) continue;
+
+        const distance = stepped[i].pos.dist(stepped[j].pos);
+        if (distance < (stepped[i].size + stepped[j].size) / 3) {
+          colliding.push(stepped[j]);
+          merged.add(j);
+        }
+      }
+      if (colliding.length > 1) {
+        newPlanets.push(mergePlanets(colliding));
+      } else {
+        newPlanets.push(stepped[i]);
+      }
+    }
+    planets = newPlanets;
+
+    if (nextPlanet) {
+      nextPlanet.vel = p5.Vector.sub(
+        nextPlanet.pos,
+        p.createVector(p.mouseX, p.mouseY),
+      ).mult(0.025);
+      nextPlanet.size += 1 / p.sqrt(nextPlanet.size + 1);
+
+      // Draw a simple line to indicate velocity direction
+      p.stroke(1, 0, 0, 0.5);
+      p.strokeWeight(2);
+      p.line(
+        nextPlanet.pos.x,
+        nextPlanet.pos.y,
+        nextPlanet.pos.x + nextPlanet.vel.x * 30,
+        nextPlanet.pos.y + nextPlanet.vel.y * 30,
+      );
+
+      p.fill(0, 0, 0);
+      p.circle(nextPlanet.pos.x, nextPlanet.pos.y, nextPlanet.size);
+    }
+  };
+
+  p.mousePressed = () => {
+    if (
+      p.mouseX >= 0 && p.mouseX <= p.width &&
+      p.mouseY >= 0 && p.mouseY <= p.height
+    ) {
+      nextPlanet = {
+        pos: p.createVector(p.mouseX, p.mouseY),
+        vel: p.createVector(0, 0),
+        size: 1,
+      };
+    }
+  };
+
+  p.mouseReleased = () => {
+    if (nextPlanet) {
+      planets = [...planets, nextPlanet];
+      nextPlanet = null;
+    }
+  };
+}/>

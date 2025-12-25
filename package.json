@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "marko": "^6.0.121",
-    "p5": "^2.1.1"
+    "p5": "^2.1.2"
   },
   "devDependencies": {
     "@marko/run": "^0.9.3",
