@@ -1,34 +1,91 @@
-<h1>The Nature of Code</h1>
+<h1>Luca's p5 Experiments</h1>
 
-<ol>
+<ul>
   <li>
-    <dl>
-      <dt><a href="01-circles">Colorful Circles</a></dt>
-      <dd>Aesthetically appealing circles appearing every frame</dd>
-      
-      <dt><a href="01-hover-walk">Hover Walker</a></dt>
-      <dd>Hexagonal random walk, advanced by mouse hover</dd>
-      
-      <dt><a href="01-jump-walk">Walk Jumper</a></dt>
-      <dd>Hexagonal random walk with step button</dd>
-    </dl>
+    <a href="hypnotic-circles">
+      <img src="./_demos/hypnotic-circles/screenshot.webp" alt="">
+      <h2>Hypnotic Circles</h2>
+      <div>Vibrant circles cover the world</div>
+    </a>
   </li>
   <li>
-    <dl>
-      <dt><a href="02-gravity-billiards">Gravity Billiards</a></dt>
-      <dd>Gravity physics with wall collision</dd>
-
-      <dt><a href="03-black-holes">Metaball Black Holes</a></dt>
-      <dd>Gravity-obeying black holes, shaded with <a href="https://en.wikipedia.org/wiki/Metaballs">metaballs</a></dd>
-
-      <dt><a href="02-cube-bounce">3d Bouncing Cubes</a></dt>
-      <dd>3d cubes bouncing & splitting</dd>
-    </dl>
+    <a href="runaway-dot">
+      <img src="./_demos/runaway-dot/screenshot.webp" alt="">
+      <h2>Runaway Dot</h2>
+      <div>Hexagonal random walk, advanced by mouse hover</div>
+    </a>
   </li>
-</ol>
+  <li>
+    <a href="jump-walk">
+      <img src="./_demos/jump-walk/screenshot.webp" alt="">
+      <h2>Jump Walk</h2>
+      <div>Hexagonal random walk with step button</div>
+    </a>
+  </li>
+  <li>
+    <a href="bouncing-cubes">
+      <img src="./_demos/bouncing-cubes/screenshot.webp" alt="">
+      <h2>Bouncing Cubes</h2>
+      <div>3d cubes bouncing & breaking on walls</div>
+    </a>
+  </li>
+  <li>
+    <a href="gravity-billiards">
+      <img src="./_demos/gravity-billiards/screenshot.webp" alt="">
+      <h2>Gravity billiards</h2>
+      <div>Colorful planets bouncing on the walls</div>
+    </a>
+  </li>
+  <li>
+    <a href="black-holes">
+      <img src="./_demos/black-holes/screenshot.webp" alt="">
+      <h2>Black Holes</h2>
+      <div>Metaballs merging with each other in space</div>
+    </a>
+  </li>
+  <li>
+    <a href="webcam-points">
+      <img src="./_demos/webcam-points/screenshot.webp" alt="">
+      <h2>Webcam Points</h2>
+      <div>Video revealed one point at a time</div>
+    </a>
+  </li>
+</ul>
+
 
 <style>
-  a {
-    color: white;
+  ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+    list-style: none;
+    padding: 1rem;
+    margin: 0;
+  }
+
+  li {
+    border: 1px solid #fff4;
+
+    a {
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+
+    img {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      display: block;
+    }
+
+    h2 {
+      margin: 0.5rem;
+    }
+
+    div {
+      margin: 0.5rem;
+      color: #e4d7cc;
+    }
   }
 </style>

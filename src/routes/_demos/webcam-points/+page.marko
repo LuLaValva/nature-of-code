@@ -1,0 +1,77 @@
+import type p5 from "p5";
+
+
+static type Color = [r: number, g: number, b: number, a: number];
+
+<let/dotsPerFrame=1000>
+
+<p5-canvas sketch(p) {
+  let graphics: p5.Graphics | undefined;
+  let capture: p5.MediaElement;
+
+  function sampleGraphicsPixel(px: number, py: number): { x: number, y: number, color?: Color } {
+    if (!graphics) return { x: -1, y: -1 };
+    
+    const scale = p.height / graphics.height;
+    const imgWidth = graphics.width * scale;
+    const x = (p.width - imgWidth) / 2;
+    
+    // Reverse the transformation
+    const gx = (px - x) / scale;
+    const gy = py / scale;
+
+    // Check if the coordinates are within the graphics bounds
+    if (gx < 0 || gx >= graphics.width || gy < 0 || gy >= graphics.height) {
+      return { x: gx, y: gy }; // Out of bounds
+    }
+
+    // Sample the pixel
+    const color = graphics.get(Math.floor(gx), Math.floor(gy)) as Color;
+    
+    return { x: gx, y: gy, color };
+  }
+
+  p.setup = () => {
+    p.createCanvas(innerWidth * 0.94, innerHeight * 0.94);
+
+    capture = p.createCapture("video", { flipped: true }, () => {
+      const el = capture.elt as HTMLVideoElement;
+      graphics = p.createGraphics(el.videoWidth, el.videoHeight);
+    });
+    capture.hide();
+  };
+
+  p.draw = () => {
+    if (!graphics) return;
+
+    graphics.image(capture, 0, 0);
+
+    p.noStroke();
+    for (let i = 0; i < dotsPerFrame; i++) {
+      const x = p.random(p.width);
+      const y = p.random(p.height);
+      const { color } = sampleGraphicsPixel(x, y);
+  
+      if (color) {
+        p.fill(color);
+        p.circle(x, y, 5);
+      }
+    }
+  };
+
+  p.windowResized = () => {
+    p.resizeCanvas(innerWidth * 0.94, innerHeight * 0.94);
+  }
+}/>
+
+<p>
+  Dots per frame:
+  <input type="range" value=dotsPerFrame valueChange(v) { dotsPerFrame = +v } min=10 max=10000>
+  ${dotsPerFrame}
+</p>
+
+<style>
+  p {
+    text-align: center;
+  }
+</style>
