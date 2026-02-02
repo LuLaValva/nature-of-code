@@ -1,0 +1,279 @@
+client import p5 from "p5";
+static interface Boid {
+  pos: p5.Vector;
+  vel: p5.Vector;
+  clusterCenter: p5.Vector | null;
+  alpha: number;
+}
+
+static interface Cluster {
+  center: p5.Vector;
+  count: number;
+  indices: number[];
+  radius: number;
+}
+
+static class QuadTree {
+  x: number; y: number; w: number; h: number;
+  boids: Boid[] = [];
+  children?: QuadTree[];
+
+  constructor(x: number, y: number, w: number, h: number) {
+    this.x = x; this.y = y; this.w = w; this.h = h;
+  }
+
+  insert(b: Boid) {
+    if (b.pos.x < this.x || b.pos.x >= this.x + this.w || 
+        b.pos.y < this.y || b.pos.y >= this.y + this.h) return;
+
+    if (!this.children && this.boids.length < 4) {
+      this.boids.push(b);
+      return;
+    }
+
+    if (!this.children) {
+      const hw = this.w / 2, hh = this.h / 2;
+      this.children = [
+        new QuadTree(this.x, this.y, hw, hh),
+        new QuadTree(this.x + hw, this.y, hw, hh),
+        new QuadTree(this.x, this.y + hh, hw, hh),
+        new QuadTree(this.x + hw, this.y + hh, hw, hh)
+      ];
+      for (const old of this.boids) this.children.forEach(k => k.insert(old));
+      this.boids = [];
+    }
+
+    this.children.forEach(k => k.insert(b));
+  }
+
+  query(rx: number, ry: number, rw: number, rh: number, found: Boid[] = []): Boid[] {
+    if (rx > this.x + this.w || rx + rw < this.x || 
+        ry > this.y + this.h || ry + rh < this.y) return found;
+
+    for (const b of this.boids) {
+      if (b.pos.x >= rx && b.pos.x < rx + rw && 
+          b.pos.y >= ry && b.pos.y < ry + rh) found.push(b);
+    }
+
+    if (this.children) this.children.forEach(k => k.query(rx, ry, rw, rh, found));
+    return found;
+  }
+}
+
+
+<p5-canvas sketch(p) {
+  let boids: Boid[];
+  let quadtree: QuadTree;
+  let clusters: Map<string, Cluster> = new Map();
+
+  const CLUSTER_THRESHOLD = 60;
+  const MIN_CLUSTER_SIZE = 2;
+
+  const randomBoid = (p: p5, width: number, height: number): Boid => ({
+    pos: p.createVector(p.random(0, width), p.random(0, height)),
+    vel: p5.Vector.fromAngle(p.random(2 * p.PI)),
+    clusterCenter: null,
+    alpha: 1
+  });
+
+  const drawBoid = (boid: Boid, alpha: number = 1) => {
+    p.push();
+    p.translate(boid.pos.x, boid.pos.y);
+    p.rotate(boid.vel.heading() - p.HALF_PI);
+
+    p.stroke(0, 0, 0, alpha);
+    p.fill(0.65, 0.75, 30, alpha);
+    p.bezier(0, 0, -25, -30, 25, -30, 0, 0);
+
+    p.noStroke()
+    p.fill(0.4, 0.25, 30, alpha);
+    p.circle(0, -15, 8);
+
+    p.pop();
+  }
+
+  const drawCluster = (cluster: Cluster) => {
+    p.noStroke();
+    p.fill(0.55, 0.6, 30, 0.4);
+    p.circle(cluster.center.x, cluster.center.y, cluster.radius * 1.5);
+    
+    p.fill(0, 0, 0);
+    p.noStroke();
+    p.textAlign(p.CENTER, p.CENTER);
+    p.textSize(16);
+    p.textStyle(p.BOLD);
+    p.text(cluster.count, cluster.center.x, cluster.center.y);
+  };
+
+  const computeClusters = (boids: Boid[]): Cluster[] => {
+    const used = new Set<number>();
+    const results: Cluster[] = [];
+
+    for (let i = 0; i < boids.length; i++) {
+      if (used.has(i)) continue;
+
+      const nearby = quadtree.query(
+        boids[i].pos.x - CLUSTER_THRESHOLD,
+        boids[i].pos.y - CLUSTER_THRESHOLD,
+        CLUSTER_THRESHOLD * 2,
+        CLUSTER_THRESHOLD * 2
+      );
+
+      const indices: number[] = [i];
+      for (let j = i + 1; j < boids.length; j++) {
+        if (used.has(j) || !nearby.includes(boids[j])) continue;
+        if (p5.Vector.dist(boids[i].pos, boids[j].pos) <= CLUSTER_THRESHOLD) {
+          indices.push(j);
+        }
+      }
+
+      if (indices.length >= MIN_CLUSTER_SIZE) {
+        let cx = 0, cy = 0;
+        for (const idx of indices) {
+          cx += boids[idx].pos.x;
+          cy += boids[idx].pos.y;
+          used.add(idx);
+        }
+        
+        const key = clusterKey(indices);
+        const targetRadius = 20 + Math.sqrt(indices.length) * 5;
+        const prevCluster = clusters.get(key);
+        
+        results.push({
+          center: p.createVector(cx / indices.length, cy / indices.length),
+          count: indices.length,
+          indices,
+          radius: prevCluster ? prevCluster.radius : targetRadius
+        });
+      }
+    }
+    return results;
+  };
+
+  const clusterKey = (indices: number[]) => 
+    indices.slice().sort((a, b) => a - b).join(',');
+
+  const nextVel = (boid: Boid) => {
+    let separation = p.createVector(0, 0);
+    let alignment = p.createVector(0, 0);
+    let cohesion = p.createVector(0, 0);
+    let count = 0;
+
+    const range = 100;
+    const nearby = quadtree.query(
+      boid.pos.x - range,
+      boid.pos.y - range,
+      range * 2,
+      range * 2
+    );
+
+    for (const other of nearby) {
+      if (other === boid) continue;
+      const dist = p5.Vector.dist(boid.pos, other.pos);
+      if (dist < range) {
+        separation.add(p5.Vector.sub(boid.pos, other.pos).div(dist));
+        alignment.add(other.vel);
+        cohesion.add(other.pos);
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      alignment.div(count);
+      cohesion.div(count).sub(boid.pos);
+    }
+
+    const wallAvoid = p.createVector(0, 0);
+    const margin = 30;
+    if (boid.pos.x < margin) wallAvoid.x = 1;
+    if (boid.pos.x > p.width - margin) wallAvoid.x = -1;
+    if (boid.pos.y < margin) wallAvoid.y = 1;
+    if (boid.pos.y > p.height - margin) wallAvoid.y = -1;
+
+    return boid.vel.copy()
+      .add(separation.mult(0.05))
+      .add(alignment.mult(0.05))
+      .add(cohesion.mult(0.005))
+      .add(wallAvoid.mult(0.5))
+      .limit(3);
+  }
+
+  p.setup = () => {
+    const canvasSize = Math.min(innerWidth, innerHeight) - 80;
+    p.createCanvas(canvasSize, canvasSize);
+    p.colorMode(p.OKLCH, 1, 1, 360);
+
+    boids = Array.from({ length: 100 }, () => randomBoid(p, canvasSize, canvasSize));
+  };
+
+  p.draw = () => {
+    p.clear();
+    
+    quadtree = new QuadTree(0, 0, p.width, p.height);
+    for (const boid of boids) quadtree.insert(boid);
+
+    // Compute clusters
+    const newClusters = computeClusters(boids);
+    const inCluster = new Map<number, p5.Vector>();
+    for (const c of newClusters) {
+      for (const idx of c.indices) inCluster.set(idx, c.center);
+    }
+
+    // Update boid animations
+    for (let i = 0; i < boids.length; i++) {
+      const target = inCluster.has(i) ? 0 : 1;
+      boids[i].alpha = p.lerp(boids[i].alpha, target, 0.4);
+      
+      if (inCluster.has(i)) {
+        boids[i].clusterCenter = inCluster.get(i)!;
+      } else if (boids[i].alpha > 0.99) {
+        boids[i].clusterCenter = null;
+      }
+
+      // Draw boid
+      if (boids[i].alpha > 0.01) {
+        const pos = boids[i].clusterCenter 
+          ? p5.Vector.lerp(boids[i].clusterCenter!, boids[i].pos, boids[i].alpha)
+          : boids[i].pos;
+        drawBoid({ ...boids[i], pos }, boids[i].alpha);
+      }
+    }
+
+    // Update & draw clusters
+    const newClusterMap = new Map<string, Cluster>();
+    for (const c of newClusters) {
+      const key = clusterKey(c.indices);
+      const targetRadius = 14 + c.count * 4;
+      
+      // Inherit radius from similar cluster if new
+      if (!clusters.has(key)) {
+        for (const [_, old] of clusters) {
+          if (Math.abs(old.count - c.count) <= 3) {
+            c.radius = old.radius;
+            break;
+          }
+        }
+      }
+      
+      c.radius = p.lerp(c.radius, targetRadius, 0.5);
+      newClusterMap.set(key, c);
+      drawCluster(c);
+    }
+    clusters = newClusterMap;
+
+    // Update physics
+    boids = boids.map((boid) => ({
+      ...boid,
+      pos: boid.pos.copy().add(boid.vel),
+      vel: nextVel(boid)
+    }))
+  };
+}/>
+
+<style>
+  canvas {
+    background: 
+      linear-gradient(rgba(255,255,255,0.8), rgba(255,255,255,0.8)),
+      url("./map.webp");
+  }
+</style>
