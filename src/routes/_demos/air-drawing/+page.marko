@@ -1,0 +1,108 @@
+import type p5 from "p5";
+import { FilesetResolver, HandLandmarker, FaceLandmarker, type Landmark } from "@mediapipe/tasks-vision";
+
+static function landmarkDistance(a: Landmark, b: Landmark) {
+  return Math.sqrt(
+    (a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2
+  )
+}
+
+<p5-canvas sketch(p) {
+  let videoGraphics: p5.Graphics | undefined;
+  let whiteboard: p5.Graphics;
+  let capture: p5.MediaElement;
+  let handLandmarker: HandLandmarker;
+  let faceLandmarker: FaceLandmarker;
+
+  const prevSpots: ([number, number] | null)[] = [];
+
+  p.setup = () => {
+    p.createCanvas(innerWidth * 0.85, innerHeight * 0.85);
+    whiteboard = p.createGraphics(p.width, p.height);
+
+    capture = p.createCapture("video", { flipped: true }, async () => {
+      const el = capture.elt as HTMLVideoElement;
+      videoGraphics = p.createGraphics(el.videoWidth, el.videoHeight);
+      const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+      handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task`,
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numHands: 2,
+      });
+      faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task`,
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+      });
+    });
+    capture.hide();
+
+    whiteboard.strokeWeight(10);
+    whiteboard.strokeCap("round");
+    whiteboard.colorMode(p.OKLCH, 1, 1, 360);
+    whiteboard.stroke(1, 1, 0);
+  };
+
+  p.draw = () => {
+    if (!videoGraphics || !handLandmarker || !faceLandmarker) return;
+    p.clear();
+
+    videoGraphics.image(capture, 0, 0);
+
+    const { landmarks: hands } = handLandmarker.detectForVideo(capture.elt as HTMLVideoElement, performance.now());
+    const { faceLandmarks: [face] } = faceLandmarker.detectForVideo(capture.elt as HTMLVideoElement, performance.now());
+
+    const videoAspect = videoGraphics.width / videoGraphics.height;
+    const drawHeight = p.height;
+    const drawWidth = drawHeight * videoAspect;
+    const offsetX = (p.width - drawWidth) / 2;
+
+    p.image(videoGraphics, offsetX, 0, drawWidth, drawHeight);
+    p.image(whiteboard, 0, 0, p.width, p.height);
+
+    if (face) {
+      const mouthOpen = landmarkDistance(face[11], face[16]) / landmarkDistance(face[9], face[4]) // lip distance / nose length
+      whiteboard.stroke(0.5, 0.8, p.map(mouthOpen, 0.1, 1.5, 0, 360));
+    }
+
+    hands.forEach((hand, i) => {
+      const inch = landmarkDistance(hand[4], hand[3]); // top thumb digit
+      if (landmarkDistance(hand[12], hand[2]) < inch) {
+        whiteboard.clear();
+      }
+      if (landmarkDistance(hand[8], hand[4]) < inch * 1.5) {
+        const x = offsetX + (1 - (hand[8].x + hand[4].x) / 2) * drawWidth;
+        const y = ((hand[8].y + hand[4].y) / 2) * drawHeight;
+        if (prevSpots[i]) {
+          whiteboard.line(prevSpots[i][0], prevSpots[i][1], x, y)
+        }
+        prevSpots[i] = [x, y];
+      } else {
+        prevSpots[i] = null;
+      }
+    });
+  };
+
+  p.windowResized = () => {
+    p.resizeCanvas(innerWidth * 0.94, innerHeight * 0.94);
+    whiteboard?.resizeCanvas(p.width, p.height);
+  }
+}/>
+
+<p>
+  Draw by pinching thumb & pointer finger, and change the color by opening your mouth!
+</p>
+<p>
+  Snap your fingers to clear the canvas.
+</p>
+
+<style>
+  p {
+    text-align: center;
+  }
+</style>
