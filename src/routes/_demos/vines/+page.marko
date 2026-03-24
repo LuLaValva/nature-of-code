@@ -1,0 +1,437 @@
+import type p5 from "p5";
+import { FilesetResolver, PoseLandmarker, type Landmark, type NormalizedLandmark } from "@mediapipe/tasks-vision";
+
+static type LCH = [l: number, c: number, h: number];
+
+static const POSE_INDICES = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 31, 32] as const;
+static const X = POSE_INDICES.length;
+static const LF = POSE_INDICES.length + 1;
+static const RF = POSE_INDICES.length + 2;
+
+static function midpoint<T extends Landmark>(a: T, b: T): T {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+    z: (a.z + b.z) / 2,
+    visibility: Math.min(a.visibility ?? 1, b.visibility ?? 1),
+  } as T;
+}
+
+static function extractPose<T extends Landmark>(landmarks: T[]) {
+  const pose = POSE_INDICES.map(i => landmarks[i]);
+  pose.push(
+    midpoint(landmarks[11], landmarks[12]),
+    midpoint(landmarks[17], landmarks[19]),
+    midpoint(landmarks[18], landmarks[20]),
+  );
+  return pose;
+}
+
+static const poseGraph: number[][] = [
+  [X],[X,3,7],[X,4,8],[1,5],[2,6],[3,LF],[4,RF],[1,8,9],[2,7,10],[7,11],[8,12],[9,13],[10,14],[11],[12],[0,1,2],[5],[6],
+];
+
+static const SMOOTH_N = 10;
+
+static const HUE_RANGE_WIDTH = 60;
+
+static function randomHueRange(): [number, number] {
+  const start = Math.random() * 360;
+  return [start, start + HUE_RANGE_WIDTH];
+}
+
+static interface TrackedPerson {
+  id: number;
+  hueRange: [number, number];
+  history: NormalizedLandmark[][];
+  lastCenter: { x: number; y: number };
+  missedFrames: number;
+  rawIndex: number;
+}
+
+static let nextPersonId = 0;
+
+static function poseCenterXY(landmarks: NormalizedLandmark[]) {
+  const hip = midpoint(landmarks[POSE_INDICES.indexOf(23)], landmarks[POSE_INDICES.indexOf(24)]);
+  const shoulder = midpoint(landmarks[POSE_INDICES.indexOf(11)], landmarks[POSE_INDICES.indexOf(12)]);
+  return midpoint(hip, shoulder);
+}
+
+static function matchPosesToPersons(
+  poses: NormalizedLandmark[][],
+  tracked: TrackedPerson[],
+) {
+  const MATCH_THRESHOLD = 0.25;
+  const MAX_MISSED = 15;
+
+  const centers = poses.map(poseCenterXY);
+  const used = new Set<number>();
+  const matched = new Map<number, number>();
+
+  const pairs: { dist: number; ti: number; pi: number }[] = [];
+  for (let ti = 0; ti < tracked.length; ti++) {
+    for (let pi = 0; pi < centers.length; pi++) {
+      const dx = tracked[ti].lastCenter.x - centers[pi].x;
+      const dy = tracked[ti].lastCenter.y - centers[pi].y;
+      pairs.push({ dist: Math.hypot(dx, dy), ti, pi });
+    }
+  }
+  pairs.sort((a, b) => a.dist - b.dist);
+
+  for (const { dist, ti, pi } of pairs) {
+    if (matched.has(ti) || used.has(pi)) continue;
+    if (dist > MATCH_THRESHOLD) break;
+    matched.set(ti, pi);
+    used.add(pi);
+  }
+
+  const result: TrackedPerson[] = [];
+
+  for (let ti = 0; ti < tracked.length; ti++) {
+    const pi = matched.get(ti);
+    if (pi !== undefined) {
+      const person = tracked[ti];
+      person.history.push(poses[pi]);
+      if (person.history.length > SMOOTH_N) person.history.shift();
+      person.lastCenter = centers[pi];
+      person.missedFrames = 0;
+      person.rawIndex = pi;
+      result.push(person);
+    } else {
+      tracked[ti].missedFrames++;
+      tracked[ti].rawIndex = -1;
+      if (tracked[ti].missedFrames < MAX_MISSED) result.push(tracked[ti]);
+    }
+  }
+
+  for (let pi = 0; pi < poses.length; pi++) {
+    if (used.has(pi)) continue;
+    const id = nextPersonId++;
+    result.push({
+      id,
+      hueRange: randomHueRange(),
+      history: [poses[pi]],
+      lastCenter: centers[pi],
+      missedFrames: 0,
+      rawIndex: pi,
+    });
+  }
+
+  return result;
+}
+
+static const RETIRE_FADE_FRAMES = 1800;
+
+static interface RetiredSnapshot {
+  img: p5.Image;
+  alpha: number;
+}
+
+static const VINE_MAX_DIST = 0.02;
+static const VINE_NORMAL_K = 0.08;
+static const VINE_TARGET_PULL = 0.00015;
+static const VINE_NOISE = 0.0003;
+static const VINE_DAMPING = 0.95;
+static const VINE_MAX_SPEED = 0.001;
+static const VINE_GRACE = 30;
+static const VINE_JOINT_RADIUS = 0.01;
+
+static const DEAD_ENDS = new Set(
+  poseGraph.flatMap((neighbors, i) => neighbors.length === 1 ? [i] : [])
+);
+
+static function filteredMean(values: number[]) {
+  const n = values.length;
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const stddev = Math.sqrt(values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / n);
+  const filtered = values.filter(v => Math.abs(v - mean) <= stddev);
+  return (filtered.length ? filtered : values).reduce((a, b) => a + b, 0) / (filtered.length || n);
+}
+
+static function smoothPose(history: Landmark[][]): Landmark[] {
+  if (history.length === 1) return history[0];
+  const numPoints = history[0].length;
+  return Array.from({ length: numPoints }, (_, j) => ({
+    x: filteredMean(history.map(f => f[j].x)),
+    y: filteredMean(history.map(f => f[j].y)),
+    z: filteredMean(history.map(f => f[j].z)),
+    visibility: history.at(-1)![j].visibility,
+  }));
+}
+
+static function pointsNearGround(points: Landmark[]) {
+  const groundBand = 0.04;
+  const feetY = Math.max(...points.map((p) => p.y));
+  return new Set(points.flatMap((p, j) => (p.y >= feetY - groundBand ? [j] : [])));
+}
+
+static interface Vine {
+  color: LCH;
+
+  pos: p5.Vector;
+  vel: p5.Vector;
+  radius: number;
+
+  lifetime: number;
+  visitedJoints: Set<number>;
+  targetJoint: number;
+}
+
+static function closestPointOnSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) {
+    const d = Math.hypot(px - ax, py - ay);
+    return { x: ax, y: ay, dist: d, t: 0 };
+  }
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  const cx = ax + t * dx, cy = ay + t * dy;
+  return { x: cx, y: cy, dist: Math.hypot(px - cx, py - cy), t };
+}
+
+static function findNearestEdge(pos: { x: number; y: number }, poses: Landmark[][]) {
+  let best = { x: 0, y: 0, dist: Infinity, nodeA: -1, nodeB: -1, t: 0, poseIdx: 0 };
+  for (let pi = 0; pi < poses.length; pi++) {
+    const pose = poses[pi];
+    for (let i = 0; i < poseGraph.length; i++) {
+      for (const j of poseGraph[i]) {
+        if (j > i) continue;
+        const a = pose[i], b = pose[j];
+        const hit = closestPointOnSegment(pos.x, pos.y, a.x, a.y, b.x, b.y);
+        if (hit.dist < best.dist) {
+          best = { x: hit.x, y: hit.y, dist: hit.dist, nodeA: i, nodeB: j, t: hit.t, poseIdx: pi };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Update the vine tip location & draw.
+ * Returns false if the vine has died.
+ */
+static function updateVine(p: p5, poses: Landmark[][], vine: Vine, offsetX: number, drawWidth: number, drawHeight: number) {
+  vine.lifetime++;
+
+  const nearest = findNearestEdge(vine.pos, poses);
+
+  if (nearest.dist > VINE_MAX_DIST && vine.lifetime > VINE_GRACE) return false;
+
+  const pose = poses[nearest.poseIdx];
+
+  const vertexIdx = nearest.t < 0.3 ? nearest.nodeA : nearest.t > 0.7 ? nearest.nodeB : -1;
+  if (vertexIdx >= 0) {
+    const vertex = pose[vertexIdx];
+    const distToVertex = Math.hypot(vine.pos.x - vertex.x, vine.pos.y - vertex.y);
+    if (distToVertex < VINE_JOINT_RADIUS) {
+      if (DEAD_ENDS.has(vertexIdx) && vine.lifetime > VINE_GRACE) return false;
+
+      if (!vine.visitedJoints.has(vertexIdx)) {
+        vine.visitedJoints.add(vertexIdx);
+        const unvisited = poseGraph[vertexIdx].filter(n => !vine.visitedJoints.has(n));
+        if (unvisited.length === 0) return false;
+        vine.targetJoint = unvisited[Math.floor(Math.random() * unvisited.length)];
+        vine.vel.mult(0.2);
+      }
+    }
+  }
+
+  const toEdgeX = nearest.x - vine.pos.x;
+  const toEdgeY = nearest.y - vine.pos.y;
+  vine.vel.x += toEdgeX * VINE_NORMAL_K;
+  vine.vel.y += toEdgeY * VINE_NORMAL_K;
+
+  if (vine.targetJoint >= 0) {
+    const target = pose[vine.targetJoint];
+    const dx = target.x - vine.pos.x;
+    const dy = target.y - vine.pos.y;
+    const len = Math.hypot(dx, dy) || 1;
+    vine.vel.x += (dx / len) * VINE_TARGET_PULL;
+    vine.vel.y += (dy / len) * VINE_TARGET_PULL;
+  }
+
+  vine.vel.x += (Math.random() - 0.5) * 2 * VINE_NOISE;
+  vine.vel.y += (Math.random() - 0.5) * 2 * VINE_NOISE;
+
+  vine.vel.mult(VINE_DAMPING);
+
+  const speed = vine.vel.mag();
+  if (speed > VINE_MAX_SPEED) vine.vel.mult(VINE_MAX_SPEED / speed);
+
+  vine.pos.add(vine.vel);
+
+  const [x, y] = toCanvas(vine.pos, offsetX, drawWidth, drawHeight);
+  p.noStroke();
+  p.fill(...vine.color);
+  p.circle(x, y, vine.radius);
+
+  return true;
+}
+
+static function toCanvas(landmark: { x: number, y: number }, offsetX: number, drawWidth: number, drawHeight: number) {
+  return [offsetX + (1 - landmark.x) * drawWidth, landmark.y * drawHeight] as const;
+}
+
+static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number, drawWidth: number, drawHeight: number) {
+  for (let i = 0; i < poseGraph.length; i++) {
+    for (const j of poseGraph[i]) {
+      if (j > i) continue;
+      const [ax, ay] = toCanvas(pose[i], offsetX, drawWidth, drawHeight);
+      const [bx, by] = toCanvas(pose[j], offsetX, drawWidth, drawHeight);
+      p.line(ax, ay, bx, by);
+    }
+  }
+}
+
+<p5-canvas sketch(p) {
+  let videoGraphics: p5.Graphics | undefined;
+  let capture: p5.MediaElement;
+  let landmarker: PoseLandmarker;
+  let trackedPersons: TrackedPerson[] = [];
+
+  const personGraphics = new Map<number, p5.Graphics>();
+  const personVines = new Map<number, Set<Vine>>();
+  let knownPersonIds = new Set<number>();
+  const retiredSnapshots: RetiredSnapshot[] = [];
+
+  function makeTreeGraphics() {
+    const g = p.createGraphics(p.width, p.height);
+    g.strokeCap("round");
+    g.colorMode(p.OKLCH, 1, 1, 360);
+    return g;
+  }
+
+  p.setup = () => {
+    p.createCanvas(innerWidth * 0.94, innerHeight * 0.94);
+
+    capture = p.createCapture("video", { flipped: true }, async () => {
+      const el = capture.elt as HTMLVideoElement;
+      videoGraphics = p.createGraphics(el.videoWidth, el.videoHeight);
+
+      let wasmPath: string;
+      let modelPath: string;
+
+      if (import.meta.env.DEV) {
+        const [localWasmUrl, localModelUrl] = await Promise.all([
+          import("./vision_wasm_internal.js?url").then(m => m.default),
+          import("./pose_landmarker_full.task?url").then(m => m.default)
+        ]);
+        wasmPath = localWasmUrl.replace(/\/[^/]+$/, '');
+        modelPath = localModelUrl;
+      } else {
+        wasmPath = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+        modelPath = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task";
+      }
+
+      const vision = await FilesetResolver.forVisionTasks(wasmPath);
+      landmarker = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: modelPath,
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numPoses: 4,
+      });
+    });
+    capture.hide();
+
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text("loading model...", p.width / 2, p.height / 2);
+  };
+
+  p.draw = () => {
+    if (!videoGraphics || !landmarker) return;
+    p.clear();
+
+    videoGraphics.image(capture, 0, 0);
+
+    const result = landmarker.detectForVideo(capture.elt as HTMLVideoElement, performance.now());
+    const rawPoses = result.landmarks.map(extractPose);
+
+    trackedPersons = matchPosesToPersons(rawPoses, trackedPersons);
+
+    const activePersons = trackedPersons.filter(tp => tp.missedFrames === 0);
+    const currentIds = new Set(activePersons.map(tp => tp.id));
+
+    for (const id of knownPersonIds) {
+      if (!currentIds.has(id)) {
+        const g = personGraphics.get(id);
+        if (g) {
+          retiredSnapshots.push({ img: g.get(), alpha: 255 });
+          g.remove();
+        }
+        personGraphics.delete(id);
+        personVines.delete(id);
+      }
+    }
+
+    for (const person of activePersons) {
+      if (!personGraphics.has(person.id)) {
+        personGraphics.set(person.id, makeTreeGraphics());
+        personVines.set(person.id, new Set());
+      }
+    }
+
+    knownPersonIds = currentIds;
+
+    const videoAspect = videoGraphics.width / videoGraphics.height;
+    const drawHeight = p.height;
+    const drawWidth = drawHeight * videoAspect;
+    const offsetX = (p.width - drawWidth) / 2;
+
+    for (const person of activePersons) {
+      const pose = smoothPose(person.history);
+      const g = personGraphics.get(person.id)!;
+      const vines = personVines.get(person.id)!;
+
+      const nearGround = person.rawIndex >= 0
+        ? pointsNearGround(extractPose(result.worldLandmarks[person.rawIndex]))
+        : new Set<number>();
+
+      const [hueMin, hueMax] = person.hueRange;
+      for (const point of nearGround) {
+        if (pose[point].visibility > 0.5 && Math.random() > 0.9) {
+          const neighbors = poseGraph[point];
+          vines.add({
+            color: [p.random(0.2, 0.6), p.random(0.2, 0.5), p.random(hueMin, hueMax) % 360],
+            pos: p.createVector(pose[point].x, pose[point].y),
+            vel: p.createVector(0, 0),
+            lifetime: 0,
+            radius: p.random(3, 8),
+            visitedJoints: new Set([point]),
+            targetJoint: neighbors[Math.floor(Math.random() * neighbors.length)],
+          })
+        }
+      }
+
+      for (const vine of [...vines]) {
+        if (!updateVine(g, [pose], vine, offsetX, drawWidth, drawHeight)) vines.delete(vine);
+      }
+    }
+
+    p.image(videoGraphics, offsetX, 0, drawWidth, drawHeight);
+
+    for (let i = retiredSnapshots.length - 1; i >= 0; i--) {
+      retiredSnapshots[i].alpha -= 255 / RETIRE_FADE_FRAMES;
+      if (retiredSnapshots[i].alpha <= 0) {
+        retiredSnapshots.splice(i, 1);
+      } else {
+        p.tint(255, retiredSnapshots[i].alpha);
+        p.image(retiredSnapshots[i].img, 0, 0, p.width, p.height);
+      }
+    }
+    p.noTint();
+
+    for (const g of personGraphics.values()) {
+      p.image(g, 0, 0, p.width, p.height);
+    }
+  };
+
+  p.windowResized = () => {
+    p.resizeCanvas(innerWidth * 0.94, innerHeight * 0.94);
+    for (const g of personGraphics.values()) {
+      g.resizeCanvas(p.width, p.height);
+    }
+  }
+}/>

@@ -19,6 +19,7 @@ declare module "@marko/run" {
 			"/hypnotic-circles": { verb: "get"; };
 			"/jump-walk": { verb: "get"; };
 			"/runaway-dot": { verb: "get"; };
+			"/vines": { verb: "get"; };
 			"/webcam-points": { verb: "get"; };
 		}
 	}> {}
@@ -123,6 +124,17 @@ declare module "../src/routes/_demos/runaway-dot/+page.marko" {
   }
 }
 
+declare module "../src/routes/_demos/vines/+page.marko" {
+  namespace MarkoRun {
+    export { NotHandled, NotMatched, GetPaths, PostPaths, GetablePath, GetableHref, PostablePath, PostableHref, Platform };
+    export type Route = Run.Routes["/vines"];
+    export type Context = Run.MultiRouteContext<Route> & Marko.Global;
+    export type Handler = Run.HandlerLike<Route>;
+    /** @deprecated use `((context, next) => { ... }) satisfies MarkoRun.Handler` instead */
+    export const route: Run.HandlerTypeFn<Route>;
+  }
+}
+
 declare module "../src/routes/_demos/webcam-points/+page.marko" {
   namespace MarkoRun {
     export { NotHandled, NotMatched, GetPaths, PostPaths, GetablePath, GetableHref, PostablePath, PostableHref, Platform };
@@ -138,7 +150,7 @@ declare module "../src/routes/+layout.marko" {
   export interface Input extends Run.LayoutInput<typeof import("../src/routes/+layout.marko")> {}
   namespace MarkoRun {
     export { NotHandled, NotMatched, GetPaths, PostPaths, GetablePath, GetableHref, PostablePath, PostableHref, Platform };
-    export type Route = Run.Routes["/" | "/air-drawing" | "/black-holes" | "/boid-map" | "/bouncing-cubes" | "/gravity-billiards" | "/hypnotic-circles" | "/jump-walk" | "/runaway-dot" | "/webcam-points"];
+    export type Route = Run.Routes["/" | "/air-drawing" | "/black-holes" | "/boid-map" | "/bouncing-cubes" | "/gravity-billiards" | "/hypnotic-circles" | "/jump-walk" | "/runaway-dot" | "/vines" | "/webcam-points"];
     export type Context = Run.MultiRouteContext<Route> & Marko.Global;
     export type Handler = Run.HandlerLike<Route>;
     /** @deprecated use `((context, next) => { ... }) satisfies MarkoRun.Handler` instead */
@@ -150,7 +162,7 @@ declare module "../src/routes/_demos/+layout.marko" {
   export interface Input extends Run.LayoutInput<typeof import("../src/routes/_demos/+layout.marko")> {}
   namespace MarkoRun {
     export { NotHandled, NotMatched, GetPaths, PostPaths, GetablePath, GetableHref, PostablePath, PostableHref, Platform };
-    export type Route = Run.Routes["/air-drawing" | "/black-holes" | "/boid-map" | "/bouncing-cubes" | "/gravity-billiards" | "/hypnotic-circles" | "/jump-walk" | "/runaway-dot" | "/webcam-points"];
+    export type Route = Run.Routes["/air-drawing" | "/black-holes" | "/boid-map" | "/bouncing-cubes" | "/gravity-billiards" | "/hypnotic-circles" | "/jump-walk" | "/runaway-dot" | "/vines" | "/webcam-points"];
     export type Context = Run.MultiRouteContext<Route> & Marko.Global;
     export type Handler = Run.HandlerLike<Route>;
     /** @deprecated use `((context, next) => { ... }) satisfies MarkoRun.Handler` instead */

@@ -2,6 +2,7 @@
   "name": "marko-p5",
   "description": "The default Marko starter app with TypeScript",
   "version": "1.0.0",
+  "type": "module",
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.32",
     "marko": "^6.0.121",
@@ -15,6 +16,7 @@
   "scripts": {
     "dev": "marko-run",
     "build": "marko-run build",
-    "preview": "marko-run preview"
+    "preview": "marko-run preview",
+    "postinstall": "node scripts/download-models.js"
   }
 }

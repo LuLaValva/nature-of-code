@@ -2,3 +2,8 @@ node_modules
 dist
 *.log
 .env
+
+# MediaPipe models (downloaded via postinstall)
+*.task
+vision_wasm_internal.js
+vision_wasm_internal.wasm

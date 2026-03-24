@@ -46,6 +46,9 @@ static function landmarkDistance(a: Landmark, b: Landmark) {
     whiteboard.strokeCap("round");
     whiteboard.colorMode(p.OKLCH, 1, 1, 360);
     whiteboard.stroke(1, 1, 0);
+
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text("downloading models...", p.width / 2, p.height / 2);
   };
 
   p.draw = () => {
