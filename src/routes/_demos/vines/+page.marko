@@ -120,13 +120,6 @@ static function matchPosesToPersons(
   return result;
 }
 
-static const RETIRE_FADE_FRAMES = 1800;
-
-static interface RetiredSnapshot {
-  img: p5.Image;
-  alpha: number;
-}
-
 static const VINE_MAX_DIST = 0.02;
 static const VINE_NORMAL_K = 0.08;
 static const VINE_TARGET_PULL = 0.00015;
@@ -211,7 +204,7 @@ static function findNearestEdge(pos: { x: number; y: number }, poses: Landmark[]
  * Update the vine tip location & draw.
  * Returns false if the vine has died.
  */
-static function updateVine(p: p5, poses: Landmark[][], vine: Vine, offsetX: number, drawWidth: number, drawHeight: number) {
+static function updateVine(p: p5, poses: Landmark[][], vine: Vine, offsetX: number, offsetY: number, drawWidth: number, drawHeight: number) {
   vine.lifetime++;
 
   const nearest = findNearestEdge(vine.pos, poses);
@@ -261,7 +254,7 @@ static function updateVine(p: p5, poses: Landmark[][], vine: Vine, offsetX: numb
 
   vine.pos.add(vine.vel);
 
-  const [x, y] = toCanvas(vine.pos, offsetX, drawWidth, drawHeight);
+  const [x, y] = toCanvas(vine.pos, offsetX, offsetY, drawWidth, drawHeight);
   p.noStroke();
   p.fill(...vine.color);
   p.circle(x, y, vine.radius);
@@ -269,23 +262,24 @@ static function updateVine(p: p5, poses: Landmark[][], vine: Vine, offsetX: numb
   return true;
 }
 
-static function toCanvas(landmark: { x: number, y: number }, offsetX: number, drawWidth: number, drawHeight: number) {
-  return [offsetX + (1 - landmark.x) * drawWidth, landmark.y * drawHeight] as const;
+static function toCanvas(landmark: { x: number, y: number }, offsetX: number, offsetY: number, drawWidth: number, drawHeight: number) {
+  return [offsetX + (1 - landmark.x) * drawWidth, offsetY + landmark.y * drawHeight] as const;
 }
 
-static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number, drawWidth: number, drawHeight: number) {
-  for (let i = 0; i < poseGraph.length; i++) {
-    for (const j of poseGraph[i]) {
-      if (j > i) continue;
-      const [ax, ay] = toCanvas(pose[i], offsetX, drawWidth, drawHeight);
-      const [bx, by] = toCanvas(pose[j], offsetX, drawWidth, drawHeight);
-      p.line(ax, ay, bx, by);
-    }
-  }
-}
+<let/cameras=null as MediaDeviceInfo[] | null>
+<let/setupCapture=null as ((c: MediaDeviceInfo) => void) | null>
+
+<if=cameras>
+  <div class="cameras">
+    <for|camera| of=cameras>
+      <button onClick() { setupCapture?.(camera); cameras = null; }>${camera.label}</button>
+    </for>
+  </div>
+</if>
 
 <p5-canvas sketch(p) {
   let videoGraphics: p5.Graphics | undefined;
+  let retiredGfx: p5.Graphics | undefined;
   let capture: p5.MediaElement;
   let landmarker: PoseLandmarker;
   let trackedPersons: TrackedPerson[] = [];
@@ -293,7 +287,6 @@ static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number
   const personGraphics = new Map<number, p5.Graphics>();
   const personVines = new Map<number, Set<Vine>>();
   let knownPersonIds = new Set<number>();
-  const retiredSnapshots: RetiredSnapshot[] = [];
 
   function makeTreeGraphics() {
     const g = p.createGraphics(p.width, p.height);
@@ -304,11 +297,21 @@ static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number
 
   p.setup = () => {
     p.createCanvas(innerWidth * 0.94, innerHeight * 0.94);
+    retiredGfx = p.createGraphics(p.width, p.height);
+    retiredGfx.colorMode(p.OKLCH, 1, 1, 360);
 
-    capture = p.createCapture("video", { flipped: true }, async () => {
-      const el = capture.elt as HTMLVideoElement;
-      videoGraphics = p.createGraphics(el.videoWidth, el.videoHeight);
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      cameras = devices.filter(d => d.kind === 'videoinput');
+      setupCapture = (device) => {
+        capture = p.createCapture({ video: { deviceId: { exact: device.deviceId } }, audio: false }, { flipped: true }, async () => {
+          const el = capture.elt as HTMLVideoElement;
+          videoGraphics = p.createGraphics(el.videoWidth, el.videoHeight);
+        });
+        capture.hide();
+      }
+    });
 
+    (async () => {
       let wasmPath: string;
       let modelPath: string;
 
@@ -333,15 +336,14 @@ static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number
         runningMode: "VIDEO",
         numPoses: 4,
       });
-    });
-    capture.hide();
+    })();
 
     p.textAlign(p.CENTER, p.CENTER);
-    p.text("loading model...", p.width / 2, p.height / 2);
+    p.text("loading model, select a camera...", p.width / 2, p.height / 2);
   };
 
   p.draw = () => {
-    if (!videoGraphics || !landmarker) return;
+    if (!videoGraphics || !landmarker || !retiredGfx) return;
     p.clear();
 
     videoGraphics.image(capture, 0, 0);
@@ -358,7 +360,7 @@ static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number
       if (!currentIds.has(id)) {
         const g = personGraphics.get(id);
         if (g) {
-          retiredSnapshots.push({ img: g.get(), alpha: 255 });
+          retiredGfx.image(g, 0, 0);
           g.remove();
         }
         personGraphics.delete(id);
@@ -376,9 +378,9 @@ static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number
     knownPersonIds = currentIds;
 
     const videoAspect = videoGraphics.width / videoGraphics.height;
-    const drawHeight = p.height;
-    const drawWidth = drawHeight * videoAspect;
-    const offsetX = (p.width - drawWidth) / 2;
+    const drawWidth = p.width;
+    const drawHeight = drawWidth / videoAspect;
+    const offsetY = (p.height - drawHeight) / 2;
 
     for (const person of activePersons) {
       const pose = smoothPose(person.history);
@@ -406,22 +408,17 @@ static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number
       }
 
       for (const vine of [...vines]) {
-        if (!updateVine(g, [pose], vine, offsetX, drawWidth, drawHeight)) vines.delete(vine);
+        if (!updateVine(g, [pose], vine, 0, offsetY, drawWidth, drawHeight)) vines.delete(vine);
       }
     }
 
-    p.image(videoGraphics, offsetX, 0, drawWidth, drawHeight);
-
-    for (let i = retiredSnapshots.length - 1; i >= 0; i--) {
-      retiredSnapshots[i].alpha -= 255 / RETIRE_FADE_FRAMES;
-      if (retiredSnapshots[i].alpha <= 0) {
-        retiredSnapshots.splice(i, 1);
-      } else {
-        p.tint(255, retiredSnapshots[i].alpha);
-        p.image(retiredSnapshots[i].img, 0, 0, p.width, p.height);
-      }
-    }
+    p.tint(128, 128);
+    p.image(videoGraphics, 0, offsetY, drawWidth, drawHeight);
     p.noTint();
+
+    retiredGfx.background(0, 0, 0, 0.01);
+
+    p.image(retiredGfx, 0, 0, p.width, p.height);
 
     for (const g of personGraphics.values()) {
       p.image(g, 0, 0, p.width, p.height);
@@ -430,8 +427,20 @@ static function drawPoseGraph(p: p5, pose: NormalizedLandmark[], offsetX: number
 
   p.windowResized = () => {
     p.resizeCanvas(innerWidth * 0.94, innerHeight * 0.94);
+    retiredGfx?.resizeCanvas(p.width, p.height);
     for (const g of personGraphics.values()) {
       g.resizeCanvas(p.width, p.height);
     }
   }
 }/>
+
+<style>
+  .cameras {
+    position: fixed;
+    top: 55vh;
+    left: 50vw;
+    translate: -50% -50%;
+    display: flex;
+    gap: 1rem;
+  }
+</style>
