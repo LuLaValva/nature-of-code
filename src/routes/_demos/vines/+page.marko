@@ -159,6 +159,7 @@ static function pointsNearGround(points: Landmark[]) {
 }
 
 static interface Vine {
+  personId: number;
   color: LCH;
 
   pos: p5.Vector;
@@ -285,7 +286,7 @@ static function toCanvas(landmark: { x: number, y: number }, offsetX: number, of
   let trackedPersons: TrackedPerson[] = [];
 
   const personGraphics = new Map<number, p5.Graphics>();
-  const personVines = new Map<number, Set<Vine>>();
+  const vines = new Set<Vine>();
   let knownPersonIds = new Set<number>();
 
   function makeTreeGraphics() {
@@ -364,14 +365,15 @@ static function toCanvas(landmark: { x: number, y: number }, offsetX: number, of
           g.remove();
         }
         personGraphics.delete(id);
-        personVines.delete(id);
+        for (const vine of vines) {
+          if (vine.personId === id) vines.delete(vine);
+        }
       }
     }
 
     for (const person of activePersons) {
       if (!personGraphics.has(person.id)) {
         personGraphics.set(person.id, makeTreeGraphics());
-        personVines.set(person.id, new Set());
       }
     }
 
@@ -382,20 +384,26 @@ static function toCanvas(landmark: { x: number, y: number }, offsetX: number, of
     const drawHeight = drawWidth / videoAspect;
     const offsetY = (p.height - drawHeight) / 2;
 
+    // Build a lookup of smoothed poses and ground sets per person id
+    const personPoses = new Map<number, Landmark[]>();
+    const personGround = new Map<number, Set<number>>();
+
     for (const person of activePersons) {
       const pose = smoothPose(person.history);
-      const g = personGraphics.get(person.id)!;
-      const vines = personVines.get(person.id)!;
+      personPoses.set(person.id, pose);
 
       const nearGround = person.rawIndex >= 0
         ? pointsNearGround(extractPose(result.worldLandmarks[person.rawIndex]))
         : new Set<number>();
+      personGround.set(person.id, nearGround);
 
+      // Spawn new vines at ground contact points
       const [hueMin, hueMax] = person.hueRange;
       for (const point of nearGround) {
         if (pose[point].visibility > 0.5 && Math.random() > 0.9) {
           const neighbors = poseGraph[point];
           vines.add({
+            personId: person.id,
             color: [p.random(0.2, 0.6), p.random(0.2, 0.5), p.random(hueMin, hueMax) % 360],
             pos: p.createVector(pose[point].x, pose[point].y),
             vel: p.createVector(0, 0),
@@ -406,9 +414,17 @@ static function toCanvas(landmark: { x: number, y: number }, offsetX: number, of
           })
         }
       }
+    }
 
-      for (const vine of [...vines]) {
-        if (!updateVine(g, [pose], vine, 0, offsetY, drawWidth, drawHeight)) vines.delete(vine);
+    for (const vine of [...vines]) {
+      const pose = personPoses.get(vine.personId);
+      const g = personGraphics.get(vine.personId);
+      if (!pose || !g) {
+        vines.delete(vine);
+        continue;
+      }
+      if (!updateVine(g, [pose], vine, 0, offsetY, drawWidth, drawHeight)) {
+        vines.delete(vine);
       }
     }
 
