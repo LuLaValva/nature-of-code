@@ -301,7 +301,10 @@ static function toCanvas(landmark: { x: number, y: number }, offsetX: number, of
     retiredGfx = p.createGraphics(p.width, p.height);
     retiredGfx.colorMode(p.OKLCH, 1, 1, 360);
 
-    navigator.mediaDevices.enumerateDevices().then(devices => {
+    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+      stream.getTracks().forEach(t => t.stop());
+      return navigator.mediaDevices.enumerateDevices();
+    }).then(devices => {
       cameras = devices.filter(d => d.kind === 'videoinput');
       setupCapture = (device) => {
         capture = p.createCapture({ video: { deviceId: { exact: device.deviceId } }, audio: false }, { flipped: true }, async () => {
